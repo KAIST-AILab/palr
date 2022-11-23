@@ -23,12 +23,17 @@ class GaussianPolicy(Mlp, TorchStochasticPolicy):
             std_architecture="shared",
             **kwargs
     ):
+        if device =='cuda':
+            ptu.set_gpu_mode(True)
+        self.device = device
+        
         super().__init__(
             hidden_sizes,
             input_size=obs_dim,
             output_size=action_dim,
             init_w=init_w,
             output_activation=torch.tanh,
+            device=device,
             **kwargs
         )
         self.min_log_std = min_log_std
@@ -36,12 +41,17 @@ class GaussianPolicy(Mlp, TorchStochasticPolicy):
         self.log_std = None
         self.std = std
         self.std_architecture = std_architecture
+        
+        if device =='cuda':
+            ptu.set_gpu_mode(True)
+        
+
         if std is None:
             if self.std_architecture == "shared":
                 last_hidden_size = obs_dim
                 if len(hidden_sizes) > 0:
                     last_hidden_size = hidden_sizes[-1]
-                self.last_fc_log_std = nn.Linear(last_hidden_size, action_dim)
+                self.last_fc_log_std = nn.Linear(last_hidden_size, action_dim, device=self.device)
                 self.last_fc_log_std.weight.data.uniform_(-init_w, init_w)
                 self.last_fc_log_std.bias.data.uniform_(-init_w, init_w)
             elif self.std_architecture == "values":
@@ -99,22 +109,29 @@ class TanhGaussianPolicy(Mlp, TorchStochasticPolicy):
             action_dim,
             std=None,
             init_w=1e-3,
+            device='cpu',
             **kwargs
     ):
+        if device =='cuda':
+            ptu.set_gpu_mode(True)
+        self.device = device
+        
         super().__init__(
             hidden_sizes,
             input_size=obs_dim,
             output_size=action_dim,
             init_w=init_w,
+            device=device,
             **kwargs
         )
         self.log_std = None
         self.std = std
+        
         if std is None:
             last_hidden_size = obs_dim
             if len(hidden_sizes) > 0:
                 last_hidden_size = hidden_sizes[-1]
-            self.last_fc_log_std = nn.Linear(last_hidden_size, action_dim)
+            self.last_fc_log_std = nn.Linear(last_hidden_size, action_dim, device=self.device)
             self.last_fc_log_std.weight.data.uniform_(-init_w, init_w)
             self.last_fc_log_std.bias.data.uniform_(-init_w, init_w)
         else:

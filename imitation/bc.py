@@ -7,8 +7,12 @@ import torch.optim as optim
 import torch.nn.functional as F
 import os
 
+def copy_nn_module(source, target):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
 class BC(nn.Module):
-    def __init__(self, policy, env, 
+    def __init__(self, policy, env, best_policy=None,
                  replay_buffer=None, replay_buffer_valid=None, seed=0, 
                  device='cuda', lr=3e-4, envname=None, wandb=None, save_policy_path=None, 
                  obs_dim=1, stacksize=1):
@@ -20,6 +24,7 @@ class BC(nn.Module):
 
         self.env = env
         self.policy = policy
+        self.best_policy = best_policy
         self.replay_buffer = replay_buffer
         self.replay_buffer_valid = replay_buffer_valid
     
@@ -50,8 +55,8 @@ class BC(nn.Module):
             obs = batch['observations']
             actions = batch['actions']
             
-            obs = torch.tensor(obs, dtype=torch.float32)
-            actions = torch.tensor(actions, dtype=torch.float32)
+            obs = torch.tensor(obs, dtype=torch.float32, device=self.device)
+            actions = torch.tensor(actions, dtype=torch.float32, device=self.device)
 
             # NOTE:
             # obs = obs[:,obs_idx] -> processed in replay buffer
@@ -69,8 +74,8 @@ class BC(nn.Module):
                 obs_valid = batch_valid['observations']
                 actions_valid = batch_valid['actions']
                         
-                obs_valid = torch.tensor(obs_valid, dtype=torch.float32)
-                actions_valid = torch.tensor(actions_valid, dtype=torch.float32)
+                obs_valid = torch.tensor(obs_valid, dtype=torch.float32, device=self.device)
+                actions_valid = torch.tensor(actions_valid, dtype=torch.float32, device=self.device)
                                          
                 valid_loss = -self.policy.log_prob(obs_valid, actions_valid).mean()
                 eval_ret_mean, eval_ret_std = self.evaluate(num_iteration=self.num_eval_iteration)
@@ -87,11 +92,18 @@ class BC(nn.Module):
                     print(f'** min val_loss! ')
                     min_loss = valid_loss
                     # policy.state_dict()
-                    if self.save_policy_path:
-                        print(f'** save model to ', f'{self.save_policy_path}/bc_actor_best.pt')
-                        os.makedirs(self.save_policy_path, exist_ok=True)
-                        torch.save(self.policy.state_dict(), 
-                                f'{self.save_policy_path}/bc_actor_best.pt')
+                    copy_nn_module(self.policy, self.best_policy)
+                    
+            if self.save_policy_path:
+                print(f'** save model to ', f'{self.save_policy_path}/bc_actor_best.pt')
+                os.makedirs(self.save_policy_path, exist_ok=True)
+                torch.save(self.best_policy.state_dict(), 
+                        f'{self.save_policy_path}/bc_actor_best.pt')
+                
+                print(f'** save model to ', f'{self.save_policy_path}/bc_actor_last.pt')
+                os.makedirs(self.save_policy_path, exist_ok=True)
+                torch.save(self.policy.state_dict(), 
+                        f'{self.save_policy_path}/bc_last_best.pt')
                     
                     
     def evaluate(self, num_iteration=5):
@@ -113,7 +125,8 @@ class BC(nn.Module):
             
             while not done and t < maxtimestep:
                 # obs = obs[:true_obs_dim]
-                action = self.policy(torch.tensor(obs, dtype=torch.float32)).mean.detach().numpy()
+                obs = torch.tensor(obs, dtype=torch.float32, device=self.device)
+                action = self.policy(obs).mean.cpu().detach().numpy()
                 next_obs, rew, done, env_info = self.env.step(action)
                 ret += rew
                 

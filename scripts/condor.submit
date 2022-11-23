@@ -1,4 +1,4 @@
-Executable              = condor.sh
+Executable              = scripts/condor.sh
 Arguments               = $(process)
 requirements=(Machine=="c02"||Machine=="c03"||Machine=="c04"||Machine=="c05"||Machine=="c06"||Machine=="c07"||Machine=="c08"||Machine=="c09"||Machine=="c10"||Machine=="c11"||Machine=="c12"||Machine=="c13"||Machine=="c14"||Machine=="c15"||Machine=="c16"||Machine=="c17"||Machine=="c18"||Machine=="c19"||Machine=="c20")
 should_transfer_files   = YES

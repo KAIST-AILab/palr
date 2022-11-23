@@ -24,6 +24,7 @@ class Mlp(PyTorchModule):
             b_init_value=0.,
             layer_norm=False,
             layer_norm_kwargs=None,
+            device='cpu'
     ):
         super().__init__()
 
@@ -37,10 +38,11 @@ class Mlp(PyTorchModule):
         self.layer_norm = layer_norm
         self.fcs = []
         self.layer_norms = []
+        self.device = device
         in_size = input_size
 
         for i, next_size in enumerate(hidden_sizes):
-            fc = nn.Linear(in_size, next_size)
+            fc = nn.Linear(in_size, next_size, device=self.device)
             in_size = next_size
             hidden_init(fc.weight)
             fc.bias.data.fill_(b_init_value)
@@ -52,7 +54,7 @@ class Mlp(PyTorchModule):
                 self.__setattr__("layer_norm{}".format(i), ln)
                 self.layer_norms.append(ln)
 
-        self.last_fc = nn.Linear(in_size, output_size)
+        self.last_fc = nn.Linear(in_size, output_size, device=self.device)
         self.last_fc.weight.data.uniform_(-init_w, init_w)
         self.last_fc.bias.data.fill_(0)
 
