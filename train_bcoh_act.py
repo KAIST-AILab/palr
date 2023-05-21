@@ -100,7 +100,7 @@ def preprocess_dataset(mdpfile, envtype, stacksize=1, partially_observable=False
     
     return new_paths
 
-def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partially_observable=False, action_history_len=2):
+def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partially_observable=False, action_history_len=None, train_with_action_history=False):
     
     indx = list(np.arange(20))
     # Indices of position information observations
@@ -121,6 +121,9 @@ def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partiall
     new_path = {}
     
     done = False
+
+    if not action_history_len:
+        action_history_len = max(stacksize-1, 1)
     
     terminals = np.array(mdpfile['terminals'])
     timeouts = np.array(mdpfile['timeouts'])
@@ -166,14 +169,13 @@ def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partiall
             new_observation = np.concatenate(observations[i+1-stacksize:i+1])
             new_next_observation = np.concatenate(next_observations[i+1-stacksize:i+1])
 
-        if idx_from_initial_state < action_history_len:            
+        if idx_from_initial_state < action_history_len:
             action_history = np.zeros(action_dim * action_history_len)
             action_history_ = np.concatenate(actions[i-idx_from_initial_state: i+1])
             action_history[-(idx_from_initial_state+1) * action_dim:] = action_history_
-            
+
         else:
             action_history = np.concatenate(actions[i+1-action_history_len:i+1])
-
 
         new_observations_list.append(new_observation)
         new_next_observations_list.append(new_next_observation)
@@ -189,7 +191,10 @@ def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partiall
 
     # prev_actions = np.array(prev_action_list)
     action_histories = np.array(action_history_list)
-    new_actions = np.concatenate((actions, action_histories), -1)    
+    new_actions = np.concatenate((actions, action_histories), -1) 
+
+    new_observations = np.concatenate((new_observations, action_histories), axis=-1)
+    new_next_observations = np.concatenate((new_next_observations, np.zeros_like(action_histories)), axis=-1) # dummy prev actions
 
     new_paths = {
         'observations': new_observations,
@@ -246,6 +251,9 @@ def train(configs):
     if 'MIReg' in configs['algorithm']:
         path = preprocess_dataset_with_prev_actions(dataset, envtype, stacksize, configs['partially_observable'], action_history_len=3)
         action_history_len = 3
+    elif configs['train_with_action_history']:
+        path = preprocess_dataset_with_prev_actions(dataset, envtype, stacksize, configs['partially_observable'], train_with_action_history=configs['train_with_action_history'])
+        action_history_len = max(1, stacksize-1)
     else:
         path = preprocess_dataset(dataset, envtype, stacksize, configs['partially_observable'])
         action_history_len = 1
@@ -258,6 +266,7 @@ def train(configs):
         configs['replay_buffer_size'],
         env,
         stacksize,
+        train_with_action_history=configs['train_with_action_history'],
         action_history_len=action_history_len
     )
     replay_buffer.add_path(train_data)
@@ -266,6 +275,7 @@ def train(configs):
         configs['replay_buffer_size'],
         env,
         stacksize,
+        train_with_action_history=configs['train_with_action_history'],
         action_history_len=action_history_len
     )
     replay_buffer_valid.add_path(valid_data)
@@ -276,15 +286,20 @@ def train(configs):
             settings=wandb.Settings(start_method="fork")
             )
 
+    if configs['train_with_action_history']:
+        policy_input_dim = obs_dim * stacksize + action_dim * (stacksize-1)
+    else:
+        policy_input_dim = obs_dim * stacksize
+
     policy = TanhGaussianPolicy(
-        obs_dim=obs_dim * stacksize,
+        obs_dim=policy_input_dim,
         action_dim=action_dim,
         hidden_sizes=configs['layer_sizes'],
         device=device,
     )
     
     best_policy = TanhGaussianPolicy(
-        obs_dim=obs_dim * stacksize,
+        obs_dim=policy_input_dim,
         action_dim=action_dim,
         hidden_sizes=configs['layer_sizes'],
         device=device,
@@ -325,9 +340,11 @@ def train(configs):
             lr=configs['lr'],
             save_policy_path = configs['save_policy_path'],
             obs_dim = obs_dim,
+            action_dim=action_dim,
             stacksize = stacksize,
             wandb=wandb,
-            l2_reg_coef=configs['l2_reg_coef']
+            l2_reg_coef=configs['l2_reg_coef'],
+            train_with_action_history=True
         )
         trainer.train(total_iteration=configs['total_iteration'], batch_size=configs['batch_size'])
 
@@ -382,8 +399,9 @@ if __name__ == "__main__":
     time.sleep(pid) # use for unstable file system
     
     envlist = ['Hopper', 'Walker2d', 'HalfCheetah', 'Ant']  #['Hopper', 'Walker2d', 'HalfCheetah', 'Ant']
-    stacksizelist = [1,2,3,4] #,3,4,0,1]                    # MDP
+    stacksizelist = [1,2,3,4] #1,2,3,4] #,3,4,0,1]          # MDP
     seedlist = [0,1,2]
+
     mi_lr_list = [1e-4]
     mi_reg_coef_list = [1e-5]
 
@@ -392,7 +410,8 @@ if __name__ == "__main__":
     if stacksize == 0 :
         # MDP
         partially_observable = False
-        envname = f'{envtype}-v2'        
+        envname = f'{envtype}-v2'
+        
     else:
         # POMDP
         partially_observable = True
@@ -404,7 +423,7 @@ if __name__ == "__main__":
 
     train_data_num = 20000
     # algorithm='BC_L2Reg_v2'
-    algorithm='MIRegAlter-W3'
+    algorithm='BC-OAH'
 
     configs = dict(
         algorithm=algorithm,         # 'BC', 'ValueDICE'
@@ -430,7 +449,8 @@ if __name__ == "__main__":
         # nu_lr=1e-3,
         batch_size=256,
         l2_reg_coef=mi_reg_coef, # 0.01
-        mi_reg_coef=mi_reg_coef
+        mi_reg_coef=mi_reg_coef,
+        train_with_action_history = True
         # grad_reg_coef=10.
     )
 

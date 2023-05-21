@@ -210,8 +210,7 @@ class MlpQfWithObsProcessor(Mlp):
 
 class MlpGoalQfWithObsProcessor(Mlp):
     def __init__(self, obs_processor, obs_dim,
-                 backprop_into_obs_preprocessor=True,
-                 *args, **kwargs):
+                 backprop_into_obs_preprocessor=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.obs_processor = obs_processor
         self.backprop_into_obs_preprocessor = backprop_into_obs_preprocessor
@@ -343,3 +342,12 @@ class ParallelMlp(nn.Module):
         flat = self.network(x)
         batch_size = x.shape[0]
         return flat.view(batch_size, -1, self.num_heads)
+
+class FlattenMlp(Mlp):
+    """
+    Flatten inputs along dimension 1 and then pass through MLP.
+    """
+
+    def forward(self, *inputs, **kwargs):
+        flat_inputs = torch.cat(inputs, dim=1)
+        return super().forward(flat_inputs, **kwargs)

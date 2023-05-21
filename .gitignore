@@ -1,4 +1,12 @@
 condor
 dataset
 results
+legacy
+figures
+__pycache__
+*/__pycache__
+core/__pycache__
+imitation/__pycache__
 .vscode
+scripts
+*.pyc

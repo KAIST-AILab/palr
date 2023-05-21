@@ -314,7 +314,6 @@ class TanhNormal(Distribution):
     Represent distribution of X where
         X ~ tanh(Z)
         Z ~ N(mean, std)
-
     Note: this is not very numerically stable.
     """
     def __init__(self, normal_mean, normal_std, epsilon=1e-6):
@@ -339,18 +338,14 @@ class TanhNormal(Distribution):
         """
         Adapted from
         https://github.com/tensorflow/probability/blob/master/tensorflow_probability/python/bijectors/tanh.py#L73
-
         This formula is mathematically equivalent to log(1 - tanh(x)^2).
-
         Derivation:
-
         log(1 - tanh(x)^2)
          = log(sech(x)^2)
          = 2 * log(sech(x))
          = 2 * log(2e^-x / (e^-2x + 1))
          = 2 * (log(2) - x - log(e^-2x + 1))
          = 2 * (log(2) - x - softplus(-2x))
-
         :param value: some value, x
         :param pre_tanh_value: arctanh(x)
         :return:
@@ -384,7 +379,6 @@ class TanhNormal(Distribution):
     def sample(self):
         """
         Gradients will and should *not* pass through this operation.
-
         See https://github.com/pytorch/pytorch/issues/4620 for discussion.
         """
         value, pre_tanh_value = self.rsample_with_pretanh()

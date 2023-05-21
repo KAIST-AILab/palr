@@ -14,7 +14,7 @@ from rlkit.torch.networks.linear_transform import LinearTransform
 from rlkit.torch.networks.normalization import LayerNorm
 from rlkit.torch.networks.mlp import (
     Mlp, ConcatMlp, MlpPolicy, TanhMlpPolicy,
-    MlpQf,
+    MlpQf, FlattenMlp,
     MlpQfWithObsProcessor,
     ConcatMultiHeadedMlp,
 )

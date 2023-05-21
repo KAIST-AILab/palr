@@ -35,6 +35,9 @@ class TD3Trainer(TorchTrainer):
             tau=0.005,
             qf_criterion=None,
             optimizer_class=optim.Adam,
+
+            wandb=None,
+            log_freq=1000
     ):
         super().__init__()
         if qf_criterion is None:
@@ -71,6 +74,9 @@ class TD3Trainer(TorchTrainer):
         self.eval_statistics = OrderedDict()
         self._n_train_steps_total = 0
         self._need_to_update_eval_statistics = True
+
+        self.wandb = wandb
+        self.log_freq = log_freq
 
     def train_from_torch(self, batch):
         rewards = batch['rewards']
