@@ -1,146 +1,27 @@
-import gym
-import envs
-import torch
-import numpy as np
-import pickle
-from core.policy import TanhGaussianPolicyWithDiscriminator, TanhGaussianPolicyWithEmbedding
-from core.replay_buffer import EnvReplayBuffer
-from rlkit.envs.wrappers import NormalizedBoxEnv
-
-from argparse import ArgumentParser
-# from imitation.fca import FCA, FCA_MINE, FCA_Entropy
-from imitation.bc import BCwithHSCIC, BCwithHSIC_Z_XY
-from itertools import product
-import h5py
-
 import os
 wandb_dir = '/tmp'
 os.environ['WANDB_DIR'] = wandb_dir
-os.environ['D4RL_DATASET_DIR'] = '/tmp'
+os.environ['D4RL_DATASET_DIR'] = './dataset'
 import wandb
-
+import envs
 import d4rl
-import time
+import gym
 
-def preprocess_dataset_with_prev_actions(mdpfile, envtype, stacksize=1, partially_observable=False, action_history_len=2):
-    
-    indx = list(np.arange(20))
-    # Indices of position information observations
-    if partially_observable:
-        envtype_to_idx = {
-            'hopper': indx[:5], 
-            'ant': indx[:13], 
-            'walker2d': indx[:8], 
-            'halfcheetah': indx[:4] + indx[8:13]
-        }
-        obs_idx = envtype_to_idx[envtype]
-        observations = np.array(mdpfile['observations'])[:, obs_idx]
-        next_observations = np.array(mdpfile['next_observations'])[:, obs_idx]
-    else:
-        observations = np.array(mdpfile['observations'])
-        next_observations = np.array(mdpfile['next_observations'])
-    
-    new_path = {}
-    
-    done = False
-    
-    terminals = np.array(mdpfile['terminals'])
-    timeouts = np.array(mdpfile['timeouts'])
-    rewards = np.array(mdpfile['rewards'])
-    actions = np.array(mdpfile['actions'])
+import torch
 
-    obs_dim = observations.shape[-1]
-    action_dim = actions.shape[-1]
+from imitation.bc import BC
+from imitation.rap import RAP
+from imitation.fca import FCA
+from imitation.mine import MINE_BC
+from imitation.palr import PALR
 
-    n_data = observations.shape[0]
-    new_observations_list = []
-    new_next_observations_list = []
-    prev_action_list = []
-    action_history_list = []
-    
-    idx_from_initial_state = 0
-    num_trajs = 0
+from argparse import ArgumentParser
+from itertools import product
 
-    for i in range(n_data):
-        if idx_from_initial_state == 0:
-            prev_action = np.zeros(action_dim)
-        else:
-            prev_action = actions[i-1]
-        prev_action_list.append(prev_action)
-
-        if idx_from_initial_state < stacksize:
-            if idx_from_initial_state == 0:
-                initial_obs = observations[i]
-            
-            new_observation = np.zeros(obs_dim * stacksize)
-            new_observation_ = np.concatenate(observations[i-idx_from_initial_state: i+1])
-            new_observation[-(idx_from_initial_state+1) * obs_dim:] = new_observation_
-            
-            new_next_observation = np.zeros(obs_dim * stacksize)
-            new_next_observation_ = np.concatenate(next_observations[i-idx_from_initial_state: i+1])
-            new_next_observation[-(idx_from_initial_state+1) * obs_dim:] = new_next_observation_
-            
-            if idx_from_initial_state + 1 != stacksize:
-                new_next_observation[-(idx_from_initial_state+2) * obs_dim:-(idx_from_initial_state+1) * obs_dim] \
-                    = initial_obs
-            
-        else:
-            new_observation = np.concatenate(observations[i+1-stacksize:i+1])
-            new_next_observation = np.concatenate(next_observations[i+1-stacksize:i+1])
-
-        if idx_from_initial_state < action_history_len:
-            action_history = np.zeros(action_dim * action_history_len)
-            action_history_ = np.concatenate(actions[i-idx_from_initial_state: i+1])
-            action_history[-(idx_from_initial_state+1) * action_dim:] = action_history_
-            
-        else:
-            action_history = np.concatenate(actions[i+1-action_history_len:i+1])
-
-
-        new_observations_list.append(new_observation)
-        new_next_observations_list.append(new_next_observation)
-        action_history_list.append(action_history)
-
-        idx_from_initial_state += 1
-        if terminals[i] or timeouts[i]:
-            idx_from_initial_state = 0
-            num_trajs += 1    
-
-    new_observations = np.array(new_observations_list)
-    new_next_observations = np.array(new_next_observations_list)
-
-    # prev_actions = np.array(prev_action_list)
-    # action_histories = np.array(action_history_list)
-    # new_actions = np.concatenate((actions, action_histories), -1)    
-    new_actions = np.array(action_history_list)
-
-    new_paths = {
-        'observations': new_observations,
-        'next_observations': new_next_observations,
-        'rewards': rewards,
-        'actions': new_actions,
-        'terminals': terminals,
-        'timeouts': timeouts,
-        # 'action_histories': action_histories
-    }
-    
-    return new_paths
-
-def data_select_num_transitions(path, num_transitions=1000, start_idx=0, random=False):
-    new_path = {}
-    
-    if random:
-        num_full_trajs = len(path['observations'])
-        choice_idx = np.random.choice(num_full_trajs, num_transitions)
-        
-    else:
-        choice_idx = np.arange(start_idx, start_idx + num_transitions)
-        
-    for key in path.keys():
-        new_path[key] = np.array(path[key])[choice_idx]
-        
-    return new_path
-
+from core.policy import TanhGaussianPolicyWithEmbedding, TanhGaussianRAPPolicy
+from core.replay_buffer import EnvReplayBuffer
+from core.preprocess import preprocess_dataset_with_prev_actions, data_select_num_transitions
+from rlkit.envs.wrappers import NormalizedBoxEnv
 
 def train(configs):
     env = NormalizedBoxEnv(gym.make(configs['envname']))
@@ -157,18 +38,13 @@ def train(configs):
     
     envname, envtype = configs['envname'], configs['envtype']
     
-    # with open(configs['traj_load_path'], 'rb') as f:
-    #     path = pickle.load(f)
     traj_load_path = configs['traj_load_path']
     print(f'-- Loading dataset from {traj_load_path}...')
     dataset = d4rl_env.get_dataset()
     print(f'-- Done!')
     
-    # if configs['partially_observable']:
-    action_history_len = configs['action_history_len']
     print(f'-- Preprocessing dataset... ({envtype}, {stacksize})')
-    path = preprocess_dataset_with_prev_actions(dataset, envtype, stacksize, configs['partially_observable'], action_history_len=action_history_len)
-    # datafile.close()
+    path = preprocess_dataset_with_prev_actions(dataset, envtype, stacksize, configs['partially_observable'], action_history_len=2)    
     
     train_data = data_select_num_transitions(path, configs['train_data_num'])
     valid_data = data_select_num_transitions(path, configs['valid_data_num'], start_idx=900000)
@@ -177,7 +53,7 @@ def train(configs):
         configs['replay_buffer_size'],
         env,
         stacksize,
-        action_history_len=action_history_len
+        action_history_len=2
     )
     replay_buffer.add_path(train_data)
 
@@ -185,42 +61,39 @@ def train(configs):
         configs['replay_buffer_size'],
         env,
         stacksize,
-        action_history_len=action_history_len
+        action_history_len=2
     )
     replay_buffer_valid.add_path(valid_data)
     
     if configs['standardize']:
         obs_mean, obs_std, act_mean, act_std = replay_buffer.calculate_statistics()
         replay_buffer_valid.set_statistics(obs_mean, obs_std, act_mean, act_std)
-
-    wandb.init(project='copycat_imitation_D4RLv5',
-            dir=wandb_dir,
-            config=configs,
-            # settings=wandb.Settings(start_method="fork")
-            )
-
-    if 'HSCIC' in configs['algorithm'] or 'BC' in configs['algorithm']:
+        
+    # to use wandb, initialize here:
+    # wandb.init(dir=wandb_dir, config=configs)
+    wandb = None
+    
+    if 'BC' in configs['algorithm']:
         embedding_dim = configs['layer_sizes'][1]
         policy = TanhGaussianPolicyWithEmbedding(
             obs_dim=obs_dim * stacksize,
-            action_dim=action_dim,
-            # hidden_sizes=configs['layer_sizes'],
-            embedding_hidden_size=configs['layer_sizes'][0],        # 300
-            embedding_dim=embedding_dim,                            # 100
-            policy_hidden_size=configs['layer_sizes'][2],           # 300            
-            device=device,            
+            action_dim=action_dim,            
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            device=device            
         )
         
         best_policy = TanhGaussianPolicyWithEmbedding(
             obs_dim=obs_dim * stacksize,
             action_dim=action_dim,
-            embedding_hidden_size=configs['layer_sizes'][0],        # 300
-            embedding_dim=embedding_dim,                            # 100
-            policy_hidden_size=configs['layer_sizes'][2],           # 300            
-            device=device,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            device=device
         )
-    
-        bc_trainer = BCwithHSCIC(
+        
+        trainer = BC(
             policy = policy,
             best_policy = best_policy,
             env = env,
@@ -229,73 +102,206 @@ def train(configs):
             seed = configs['seed'],
             device = device,
             envname = envname,
-            # mi_lr = configs['mi_lr'],
+            lr = configs['lr'],
+            save_policy_path = configs['save_policy_path'],
+            obs_dim = obs_dim,
+            action_dim = action_dim,            
+            stacksize = stacksize,
+            wandb = wandb,            
+            standardize=configs['standardize']
+        )
+
+        trainer.train(total_iteration=configs['total_iteration'],
+                      eval_freq = configs['eval_freq'],
+                      batch_size = configs['batch_size'],
+                      num_valid = configs['valid_data_num'])
+        
+    elif 'RAP' in configs['algorithm']:
+        embedding_dim = configs['layer_sizes'][1]
+        policy = TanhGaussianRAPPolicy(
+            obs_dim=obs_dim,
+            stack_size=stacksize,
+            action_dim=action_dim,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            residual_hidden_size=configs['additional_network_size'],
+            device=device,
+        )
+        
+        best_policy = TanhGaussianRAPPolicy(
+            obs_dim=obs_dim,
+            stack_size=stacksize,
+            action_dim=action_dim,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            residual_hidden_size=configs['additional_network_size'],
+            device=device,
+        )
+    
+        trainer = RAP(
+            policy = policy,
+            best_policy = best_policy,
+            env = env,
+            replay_buffer = replay_buffer,
+            replay_buffer_valid = replay_buffer_valid,
+            seed = configs['seed'],
+            device = device,  
+            lr = configs['lr'],
+            save_policy_path = configs['save_policy_path'],
+            obs_dim = obs_dim,
+            action_dim = action_dim,            
+            embedding_dim = embedding_dim,
+            stacksize = stacksize,
+            wandb = wandb,                        
+            standardize=configs['standardize']
+        )
+
+        trainer.train(total_iteration = configs['total_iteration'], 
+                      eval_freq  = configs['eval_freq'],
+                      batch_size = configs['batch_size'],
+                      num_valid = configs['valid_data_num'])
+        
+    elif 'FCA' in configs['algorithm']:
+        embedding_dim = configs['layer_sizes'][1]
+        policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,            
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],            
+            device=device,            
+        )
+        
+        best_policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],            
+            device=device,
+        )
+    
+        trainer = FCA(
+            policy = policy,
+            best_policy = best_policy,
+            env = env,
+            replay_buffer = replay_buffer,
+            replay_buffer_valid = replay_buffer_valid,
+            seed = configs['seed'],
+            device = device,
+            lr = configs['lr'],
+            wandb = wandb,
+            save_policy_path = configs['save_policy_path'],            
+            obs_dim = obs_dim,
+            action_dim = action_dim,
+            stacksize = stacksize,
+            standardize=configs['standardize'],           
+            embedding_dim = embedding_dim,
+            entropy_hidden_size = configs['additional_network_size'],
+            entropy_lr = configs['inner_lr'],
+            reg_coef = configs['reg_coef'],
+            info_bottleneck_loss_coef = configs['info_bottleneck_loss_coef']
+        )
+
+        trainer.train(total_iteration = configs['total_iteration'], 
+                      eval_freq  = configs['eval_freq'],
+                      batch_size = configs['batch_size'],
+                      num_valid = configs['valid_data_num'],
+                      inner_steps = configs['inner_steps'],)
+        
+    elif 'MINE' in configs['algorithm']:
+        embedding_dim = configs['layer_sizes'][1]
+        policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,            
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],            
+            device=device,            
+        )
+        
+        best_policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],            
+            device=device,            
+        )
+    
+        trainer = MINE_BC(
+            policy = policy,
+            best_policy = best_policy,
+            env = env,
+            replay_buffer = replay_buffer,
+            replay_buffer_valid = replay_buffer_valid,
+            seed = configs['seed'],
+            device = device,
+            lr = configs['lr'],
+            wandb = wandb,            
+            save_policy_path = configs['save_policy_path'],            
+            obs_dim = obs_dim,
+            action_dim = action_dim,
+            stacksize = stacksize,
+            embedding_dim = embedding_dim,
+            standardize=configs['standardize'],            
+            mine_lr = configs['inner_lr'],
+            reg_coef = configs['reg_coef'],            
+            info_bottleneck_loss_coef = configs['info_bottleneck_loss_coef']
+        )
+
+        trainer.train(total_iteration = configs['total_iteration'], 
+                      eval_freq  = configs['eval_freq'],
+                      inner_steps = configs['inner_steps'],
+                      batch_size = configs['batch_size'],
+                      num_valid = configs['valid_data_num'])
+        
+    elif 'PALR' in configs['algorithm']:
+        embedding_dim = configs['layer_sizes'][1]
+        policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,
+            # hidden_sizes=configs['layer_sizes'],
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            device=device,            
+        )
+        
+        best_policy = TanhGaussianPolicyWithEmbedding(
+            obs_dim=obs_dim * stacksize,
+            action_dim=action_dim,
+            embedding_hidden_size=configs['layer_sizes'][0],
+            embedding_dim=embedding_dim,
+            policy_hidden_size=configs['layer_sizes'][2],
+            device=device,
+        )
+    
+        trainer = PALR(
+            policy = policy,
+            best_policy = best_policy,
+            env = env,
+            replay_buffer = replay_buffer,
+            replay_buffer_valid = replay_buffer_valid,
+            seed = configs['seed'],
+            device = device,
             lr = configs['lr'],
             save_policy_path = configs['save_policy_path'],
             obs_dim = obs_dim,
             action_dim = action_dim,
-            # embedding_dim = embedding_dim,
             stacksize = stacksize,
             wandb = wandb,
-            # info_bottleneck_loss_coef = configs['info_bottleneck_loss_coef'],
             reg_coef = configs['reg_coef'],
-            action_history_len=action_history_len,
             ridge_lambda = configs['ridge_lambda'],
             standardize=configs['standardize']
         )
 
-        bc_trainer.train(total_iteration=configs['total_iteration'],
-                         batch_size = configs['batch_size'],
-                         num_valid = configs['valid_data_num'],
-                         regularize_embedding=configs['regularize_embedding'])
-        
-    elif 'HSIC' in configs['algorithm']:
-        embedding_dim = configs['layer_sizes'][1]
-        policy = TanhGaussianPolicyWithEmbedding(
-            obs_dim=obs_dim * stacksize,
-            action_dim=action_dim,
-            # hidden_sizes=configs['layer_sizes'],
-            embedding_hidden_size=configs['layer_sizes'][0],        # 300
-            embedding_dim=embedding_dim,                            # 100
-            policy_hidden_size=configs['layer_sizes'][2],           # 300            
-            device=device,            
-        )
-        
-        best_policy = TanhGaussianPolicyWithEmbedding(
-            obs_dim=obs_dim * stacksize,
-            action_dim=action_dim,
-            embedding_hidden_size=configs['layer_sizes'][0],        # 300
-            embedding_dim=embedding_dim,                            # 100
-            policy_hidden_size=configs['layer_sizes'][2],           # 300            
-            device=device,
-        )
-    
-        bc_trainer = BCwithHSIC_Z_XY(
-            policy = policy,
-            best_policy = best_policy,
-            env = env,
-            replay_buffer = replay_buffer,
-            replay_buffer_valid = replay_buffer_valid,
-            seed = configs['seed'],
-            device = device,
-            envname = envname,
-            # mi_lr = configs['mi_lr'],
-            lr = configs['lr'],
-            save_policy_path = configs['save_policy_path'],
-            obs_dim = obs_dim,
-            action_dim = action_dim,
-            # embedding_dim = embedding_dim,
-            stacksize = stacksize,
-            wandb = wandb,
-            # info_bottleneck_loss_coef = configs['info_bottleneck_loss_coef'],
-            reg_coef = configs['reg_coef'],
-            action_history_len=action_history_len,            
-            standardize=configs['standardize']
-        )
-
-        bc_trainer.train(total_iteration=configs['total_iteration'],
-                         batch_size = configs['batch_size'],
-                         regularize_embedding = configs['regularize_embedding'])
+        trainer.train(total_iteration = configs['total_iteration'],
+                      eval_freq  = configs['eval_freq'],
+                      batch_size = configs['batch_size'],
+                      num_valid  = configs['valid_data_num'])
     
     else: 
         raise NotImplementedError       
@@ -303,86 +309,44 @@ def train(configs):
  
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--pid", help="process_id", default=0, type=int)
+    parser.add_argument("--pid", help="process_id", default=4, type=int)
     args = parser.parse_args()
     pid = args.pid
-
-    time.sleep(pid) # use for unstable file system
     
-    methodlist = ['HSCIC']
-    envlist = ['Walker2d','Hopper','Ant','HalfCheetah']      #, 'Ant', 'Hopper']  #'HalfCheetah', 'Walker2d', 'Ant']
-    stacksizelist = [2,4]                # MDP=0
-    seedlist = [0,1,2,3,4]                        #,3,4]
-    # ib_coef_list = [0, 1e-4]7
-    reg_coef_list = [0] #0.01,0.1,1,10,100] #1., 10., 1e-1, 1e-2]   #[1e-4]
-    # mine_steps_list = [10]
-    batch_size_list = [1024]
-    dataset_size_list = [30000]
-    action_history_len_list = [2]
+    # Hyperparameter Grid
+    methodlist        = ['BC', 'RAP', 'FCA', 'MINE', 'PALR']           # candidates: 'BC', 'RAP', 'FCA', 'MINE', 'PALR'
+    envlist           = ['Walker2d']
+    stacksizelist     = [2]
+    seedlist          = [0]
+    reg_coef_list     = [0.01]
+    batch_size_list   = [1024]
+    dataset_size_list = [30000]    
     ridge_lambda_list = [1e-2]
-
-    identifying_str = 'repreg_smallAE'
-
+    
     standardize = True    
     
-    method, envtype, stacksize, seed, reg_coef, batch_size, dataset_size, action_history_len, ridge_lambda = \
-        list(product(methodlist, envlist, stacksizelist, seedlist, reg_coef_list, batch_size_list, dataset_size_list, action_history_len_list, ridge_lambda_list))[pid]    
-    
-    # missing_configs =[
-    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 2, 'reg_coef': 100.},
-    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 3, 'reg_coef': 100.},
-    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 2, 'reg_coef': 1.},
-    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 3, 'reg_coef': 1.},
-    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 4, 'reg_coef': 1.},        
-    #     {'env': 'Ant', 'stacksize':2, 'method': 'HSCIC', 'seed': 1, 'reg_coef': 100.},
-    #     {'env': 'Ant', 'stacksize':2, 'method': 'HSCIC', 'seed': 1, 'reg_coef': 100.},
-    # ]
-   
-    # method = missing_configs[pid]['method']
-    # envtype = missing_configs[pid]['env']
-    # stacksize = missing_configs[pid]['stacksize']
-    # seed = missing_configs[pid]['seed']
-    # reg_coef = missing_configs[pid]['reg_coef']
-    
-    # batch_size = batch_size_list[0]
-    # dataset_size = dataset_size_list[0]
-    # action_history_len = action_history_len_list[0]
-    # ridge_lambda = ridge_lambda_list[0]    
-    
-    if stacksize == -1:
-        stacksize_dict = {
-            'Walker2d':     4,
-            'Hopper':       3,
-            'HalfCheetah':  2,
-            'Ant':          3
-        }
-        stacksize = stacksize_dict['envtype']
-    
+    method, envtype, stacksize, seed, reg_coef, batch_size, dataset_size, ridge_lambda = \
+        list(product(methodlist, envlist, stacksizelist, seedlist, reg_coef_list, batch_size_list, dataset_size_list, ridge_lambda_list))[pid]    
+        
     if method == 'BC':
         reg_coef = 0.
-
-    # if ib_coef > 0:
-    #     ib_str = 'IB_'
-    # else:
-    #     ib_str = ''
     
-    # algorithm = f'{method}_{ib_str}W{stacksize}_{identifying_str}'    
-
-    # action_history_len = 1
-    # if stacksize <= 1:
-    #     action_history_len = 1
-    # else:
-    #     action_history_len = stacksize
-        
-    algorithm = f'{method}_W{stacksize}_{identifying_str}_B{batch_size}_AH{action_history_len}'
-
-    if stacksize == 0 :
-        # MDP
-        partially_observable = False
-        envname = f'{envtype}-v2'
-        
+    if method == 'FCA':
+        ib_coef = 0.01
     else:
-        # POMDP
+        ib_coef = 0.
+        
+    if method == 'FCA' or method == 'MINE':
+        inner_steps = 5
+    else:
+        inner_steps = 1
+        
+    algorithm = f'{method}_W{stacksize}'
+
+    if stacksize == 0 :        # MDP
+        partially_observable = False
+        envname = f'{envtype}-v2'        
+    else:                      # POMDP
         partially_observable = True
         envname = f'PO{envtype}-v0'
         
@@ -393,15 +357,16 @@ if __name__ == "__main__":
     train_data_num = dataset_size
 
     configs = dict(
-        algorithm=algorithm,
-        # layer_sizes=[300, 100, 300],
+        algorithm=algorithm,        
         layer_sizes=[128, 64, 128],
+        additional_network_size=128,
         replay_buffer_size=int(1E6),
         traj_load_path='',
         train_data_num=train_data_num,
         valid_data_num=2000,
+        eval_freq=1000,
         lr=3e-4,
-        mi_lr=1e-4,
+        inner_lr=1e-4,
         envtype=envtype_lower,
         d4rl_env_name=d4rl_env_name,
         envname=envname,
@@ -412,18 +377,15 @@ if __name__ == "__main__":
         total_iteration=5e5,
         partially_observable=partially_observable,
         use_discriminator_action_input=True,
-        # info_bottleneck_loss_coef=ib_coef,
-        reg_coef=reg_coef,
-        action_history_len=action_history_len,
-        # mine_steps=mine_steps, 
+        info_bottleneck_loss_coef=ib_coef,
+        reg_coef=reg_coef,  
+        inner_steps=inner_steps,
         batch_size=batch_size,
         ridge_lambda=ridge_lambda,
-        standardize=standardize,
-        regularize_embedding=True
+        standardize=standardize
     )
 
     configs['traj_load_path'] = traj_load_path
-    # configs['save_policy_path'] = f'results/{envname}/{algorithm}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
     configs['save_policy_path'] = f'results/{envname}/{algorithm}/alpha{reg_coef}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
     
     print(configs)

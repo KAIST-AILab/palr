@@ -10,3 +10,4 @@ imitation/__pycache__
 .vscode
 scripts
 *.pyc
+dataset
