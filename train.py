@@ -310,11 +310,11 @@ if __name__ == "__main__":
     time.sleep(pid) # use for unstable file system
     
     methodlist = ['HSCIC']
-    envlist = ['Walker2d','Hopper', 'HalfCheetah', 'Ant']    #, 'Ant', 'Hopper']  #'HalfCheetah', 'Walker2d', 'Ant']
-    stacksizelist = [2]                            # MDP=0
-    seedlist = [0,1,2,3,4]                            #,3,4]
+    envlist = ['Walker2d','Hopper','Ant','HalfCheetah']      #, 'Ant', 'Hopper']  #'HalfCheetah', 'Walker2d', 'Ant']
+    stacksizelist = [2,4]                # MDP=0
+    seedlist = [0,1,2,3,4]                        #,3,4]
     # ib_coef_list = [0, 1e-4]7
-    reg_coef_list = [0.1,0.01] #1., 10., 1e-1, 1e-2]   #[1e-4]
+    reg_coef_list = [0] #0.01,0.1,1,10,100] #1., 10., 1e-1, 1e-2]   #[1e-4]
     # mine_steps_list = [10]
     batch_size_list = [1024]
     dataset_size_list = [30000]
@@ -326,9 +326,30 @@ if __name__ == "__main__":
     standardize = True    
     
     method, envtype, stacksize, seed, reg_coef, batch_size, dataset_size, action_history_len, ridge_lambda = \
-        list(product(methodlist, envlist, stacksizelist, seedlist, reg_coef_list, batch_size_list, dataset_size_list, action_history_len_list, ridge_lambda_list))[pid]
-
-    if stacksize == -1:    
+        list(product(methodlist, envlist, stacksizelist, seedlist, reg_coef_list, batch_size_list, dataset_size_list, action_history_len_list, ridge_lambda_list))[pid]    
+    
+    # missing_configs =[
+    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 2, 'reg_coef': 100.},
+    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 3, 'reg_coef': 100.},
+    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 2, 'reg_coef': 1.},
+    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 3, 'reg_coef': 1.},
+    #     {'env': 'HalfCheetah', 'stacksize':4, 'method': 'HSCIC', 'seed': 4, 'reg_coef': 1.},        
+    #     {'env': 'Ant', 'stacksize':2, 'method': 'HSCIC', 'seed': 1, 'reg_coef': 100.},
+    #     {'env': 'Ant', 'stacksize':2, 'method': 'HSCIC', 'seed': 1, 'reg_coef': 100.},
+    # ]
+   
+    # method = missing_configs[pid]['method']
+    # envtype = missing_configs[pid]['env']
+    # stacksize = missing_configs[pid]['stacksize']
+    # seed = missing_configs[pid]['seed']
+    # reg_coef = missing_configs[pid]['reg_coef']
+    
+    # batch_size = batch_size_list[0]
+    # dataset_size = dataset_size_list[0]
+    # action_history_len = action_history_len_list[0]
+    # ridge_lambda = ridge_lambda_list[0]    
+    
+    if stacksize == -1:
         stacksize_dict = {
             'Walker2d':     4,
             'Hopper':       3,
@@ -402,7 +423,8 @@ if __name__ == "__main__":
     )
 
     configs['traj_load_path'] = traj_load_path
-    configs['save_policy_path'] = f'results/{envname}/{algorithm}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
+    # configs['save_policy_path'] = f'results/{envname}/{algorithm}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
+    configs['save_policy_path'] = f'results/{envname}/{algorithm}/alpha{reg_coef}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
     
     print(configs)
 
