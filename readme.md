@@ -34,7 +34,6 @@ python train.py --pid=0
 ``` 
 
 ### 3. Notes
-- Results are averaged over 5 different seed.
 - Our code implementation is based on the following public repositories:
     - rlkit : https://github.com/rail-berkeley/rlkit
     - FCA : https://github.com/AlvinWen428/fighting-copycat-agents.git
