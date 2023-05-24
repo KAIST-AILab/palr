@@ -69,11 +69,9 @@ def train(configs):
         obs_mean, obs_std, act_mean, act_std = replay_buffer.calculate_statistics()
         replay_buffer_valid.set_statistics(obs_mean, obs_std, act_mean, act_std)
         
-    # to use wandb, initialize here:
-    wandb.init(project='palr_sanity_check',
-               dir=wandb_dir, 
-               config=configs)
-    # wandb = None
+    # to use wandb, initialize here, e.g.
+    # wandb.init(project='palr', dir=wandb_dir, config=configs)
+    wandb = None
     
     if 'BC' in configs['algorithm']:
         embedding_dim = configs['layer_sizes'][1]
