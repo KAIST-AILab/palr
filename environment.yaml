@@ -1,4 +1,4 @@
-name: copycat
+name: palr
 channels:
   - conda-forge
   - defaults
@@ -55,7 +55,6 @@ dependencies:
     - labmaze==1.0.5
     - lockfile==0.12.2
     - lxml==4.9.1
-    - mjrl==1.0.0
     - mujoco==2.3.0
     - mujoco-py==1.50.1.68
     - numpy==1.21.6
@@ -88,4 +87,4 @@ dependencies:
     - urllib3==1.26.12
     - wandb==0.13.5
     - zipp==3.10.0
-prefix: /home/syseo/anaconda3/envs/copycat
+prefix: /home/$USER/anaconda3/envs/palr

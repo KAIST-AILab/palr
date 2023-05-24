@@ -28,7 +28,6 @@ def gaussian_kernel(X, sigma2=None, Y=None, normalized=False, **ignored):
 
 def estimate_hscic(X, Y, Z, ridge_lambda=1e-2, use_median=False, normalize_kernel=False, sigma2=None):
     '''X ind. Y | Z '''
-    # https://arxiv.org/pdf/2207.09768.pdf
     # (1) action regularization version : X = imitator action
     # (2) regularized representation version : X = varphi(Obs)    
 
@@ -45,18 +44,29 @@ def estimate_hscic(X, Y, Z, ridge_lambda=1e-2, use_median=False, normalize_kerne
     Kz = gaussian_kernel(Z, sigma2=sigma2_, normalized=normalize_kernel)
     
     n = Kz.shape[0]    
-    WtKzz = torch.linalg.solve(Kz + ridge_lambda * n * torch.eye(n).to(Kz.device), Kz) 
-    # * Kz.shape[0] for ridge_lambda
     
+    WtKzz = torch.linalg.solve(Kz + ridge_lambda * n * torch.eye(n).to(Kz.device), Kz)     
     term_1 = (WtKzz * ((Kx * Ky) @ WtKzz)).sum()    # tr(WtKzz.T @ (Kx * Ky) @ WtKzz)
     WkKxWk = WtKzz * (Kx @ WtKzz)
     KyWk = Ky @ WtKzz
     term_2 = (WkKxWk * KyWk).sum()        
-    term_3 = (WkKxWk.sum(dim=0) * (WtKzz * KyWk).sum(dim=0)).sum()
+    term_3 = (WkKxWk.sum(dim=0) * (WtKzz * KyWk).sum(dim=0)).sum()    
+    result = (term_1 - 2 * term_2 + term_3) / n    
     
-    # W = (Kz + ridge_lambda  * torch.eye(Kz.shape[0])).inverse()
-    # term1 = Kz.T @ W @ (Kx * Ky) @ W.T @ Kz
-    # term2 = -2 * Kz.T @ W ( Kx@W.T@Kz * Ky@W.T@Kz )
-    # term3 = (Kz.T @ W @ Kx @ W.T @ Kz) * (Kz.T @ W @ Ky @ W.T @ Kz)
-
-    return (term_1 - 2 * term_2 + term_3) / Kz.shape[0]
+    # W = (Kz + ridge_lambda * n * torch.eye(n)).inverse()
+    # A1 = Kz.T @ W @ ( Kx * Ky ) @ W.T @ Kz
+    # A2 = Kz.T @ W @ ( (Kx@W.T@Kz) * (Ky@W.T@Kz) )
+    # A3 = (Kz.T @ W @ Kx @ W.T @ Kz) * (Kz.T @ W @ Ky @ W.T @ Kz)
+    # result2 = (A1-2*A2+A3).trace()/n
+    
+    # W = (Kz + ridge_lambda  * n * torch.eye(n)).inverse()
+    # total_term = 0.
+    # for i in range(n):
+    #     kz = Kz[i]  #(n,1)
+    #     t1 = kz.T @ W @ (Kx * Ky) @ W.T @ kz
+    #     t2 = kz.T @ W @ ( (Kx@W.T@kz) * (Ky@W.T@kz) )
+    #     t3 = (kz.T @ W @ Kx @ W.T @ kz) * (kz.T @ W @ Ky @ W.T @ kz)
+    #     total_term += t1 - 2 * t2 + t3
+    # result3 = total_term / n
+    
+    return result

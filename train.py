@@ -1,7 +1,7 @@
 import os
-wandb_dir = '/tmp'
+wandb_dir = '.'
 os.environ['WANDB_DIR'] = wandb_dir
-os.environ['D4RL_DATASET_DIR'] = './dataset'
+os.environ['D4RL_DATASET_DIR'] = './dataset/'
 import wandb
 import envs
 import d4rl
@@ -70,8 +70,10 @@ def train(configs):
         replay_buffer_valid.set_statistics(obs_mean, obs_std, act_mean, act_std)
         
     # to use wandb, initialize here:
-    # wandb.init(dir=wandb_dir, config=configs)
-    wandb = None
+    wandb.init(project='palr_sanity_check',
+               dir=wandb_dir, 
+               config=configs)
+    # wandb = None
     
     if 'BC' in configs['algorithm']:
         embedding_dim = configs['layer_sizes'][1]
@@ -262,8 +264,7 @@ def train(configs):
         embedding_dim = configs['layer_sizes'][1]
         policy = TanhGaussianPolicyWithEmbedding(
             obs_dim=obs_dim * stacksize,
-            action_dim=action_dim,
-            # hidden_sizes=configs['layer_sizes'],
+            action_dim=action_dim,            
             embedding_hidden_size=configs['layer_sizes'][0],
             embedding_dim=embedding_dim,
             policy_hidden_size=configs['layer_sizes'][2],
@@ -315,13 +316,13 @@ if __name__ == "__main__":
     
     # Hyperparameter Grid
     methodlist        = ['BC', 'RAP', 'FCA', 'MINE', 'PALR']           # candidates: 'BC', 'RAP', 'FCA', 'MINE', 'PALR'
-    envlist           = ['Walker2d']
-    stacksizelist     = [2]
-    seedlist          = [0]
-    reg_coef_list     = [0.01]
+    envlist           = ['Hopper', 'Walker2d', 'HalfCheetah', 'Ant']   # candidates: 'Hopper', 'Walker2d', 'HalfCheetah', 'Ant'
+    stacksizelist     = [2, 4]
+    seedlist          = [0, 1, 2, 3, 4]
+    reg_coef_list     = [10.]
     batch_size_list   = [1024]
-    dataset_size_list = [30000]    
-    ridge_lambda_list = [1e-2]
+    dataset_size_list = [30000]
+    ridge_lambda_list = [1e-5]
     
     standardize = True    
     
@@ -338,10 +339,11 @@ if __name__ == "__main__":
         
     if method == 'FCA' or method == 'MINE':
         inner_steps = 5
+        reg_coef = 0.1
     else:
         inner_steps = 1
         
-    algorithm = f'{method}_W{stacksize}'
+    algorithm = f'{method}_W{stacksize}_corrected'
 
     if stacksize == 0 :        # MDP
         partially_observable = False
@@ -389,5 +391,4 @@ if __name__ == "__main__":
     configs['save_policy_path'] = f'results/{envname}/{algorithm}/alpha{reg_coef}/num_train{train_data_num}/stack{stacksize}/seed{seed}'
     
     print(configs)
-
     train(configs)

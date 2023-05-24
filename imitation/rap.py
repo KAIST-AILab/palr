@@ -132,11 +132,11 @@ class RAP(nn.Module):
                 train_mh = torch.cat([m,h], dim=-1)
                 valid_mh = torch.cat([valid_m, valid_h], dim=-1)
                 
-                hscic_estimate = estimate_hscic(X=train_mh, Y=prev_actions, Z=actions, ridge_lambda=1e-2)
-                valid_hscic_estimate = estimate_hscic(X=valid_mh, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-2)
-                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-2)                
-                train_hscic_m_a_given_aprev = estimate_hscic(X=m, Y=actions, Z=prev_actions, ridge_lambda=1e-2)
-                valid_hscic_m_a_given_aprev = estimate_hscic(X=valid_m, Y=actions_valid, Z=prev_actions_valid, ridge_lambda=1e-2)
+                hscic_estimate = estimate_hscic(X=train_mh, Y=prev_actions, Z=actions, ridge_lambda=1e-5)
+                valid_hscic_estimate = estimate_hscic(X=valid_mh, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-5)
+                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-5)                
+                train_hscic_m_a_given_aprev = estimate_hscic(X=m, Y=actions, Z=prev_actions, ridge_lambda=1e-5)
+                valid_hscic_m_a_given_aprev = estimate_hscic(X=valid_m, Y=actions_valid, Z=prev_actions_valid, ridge_lambda=1e-5)
                 
                 eval_ret_mean, eval_ret_std = self.evaluate(num_iteration=self.num_eval_iteration)
                 

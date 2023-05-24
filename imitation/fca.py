@@ -183,9 +183,9 @@ class FCA(nn.Module):
                 policy_action_valid = self.policy(obs_valid).sample()                
                 h_train = self.policy.forward_embedding(obs)
                 
-                hscic_estimate = estimate_hscic(X=h_train, Y=prev_actions, Z=actions, ridge_lambda=1e-2)
-                valid_hscic_estimate = estimate_hscic(X=h_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-2)
-                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-2)
+                hscic_estimate = estimate_hscic(X=h_train, Y=prev_actions, Z=actions, ridge_lambda=1e-5)
+                valid_hscic_estimate = estimate_hscic(X=h_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-5)
+                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_actions_valid, Z=actions_valid, ridge_lambda=1e-5)
                 
                 eval_ret_mean, eval_ret_std = self.evaluate(num_iteration=self.num_eval_iteration)
                 

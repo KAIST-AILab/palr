@@ -113,7 +113,7 @@ class BC(nn.Module):
                     Z_std = actions
                     p_std = policy_action
             
-                hscic_estimate = estimate_hscic(X=policy_embedding, Y=Y_std, Z=Z_std, ridge_lambda=1e-2)
+                hscic_estimate = estimate_hscic(X=policy_embedding, Y=Y_std, Z=Z_std, ridge_lambda=1e-5)
                 
                 policy_embedding_valid = self.policy.forward_embedding(obs_valid)
                 if self.standardize:
@@ -127,8 +127,8 @@ class BC(nn.Module):
                     Z_std = actions_valid
                     p_std = policy_action
                     
-                valid_hscic_estimate = estimate_hscic(X=policy_embedding_valid, Y=Y_std, Z=Z_std, ridge_lambda=1e-2)
-                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_expert_action_valid, Z=actions_valid, ridge_lambda=1e-2)
+                valid_hscic_estimate = estimate_hscic(X=policy_embedding_valid, Y=Y_std, Z=Z_std, ridge_lambda=1e-5)
+                valid_hscic_estimate_action = estimate_hscic(X=policy_action_valid, Y=prev_expert_action_valid, Z=actions_valid, ridge_lambda=1e-5)
 
                 valid_neg_likelihood = -self.policy.log_prob(obs_valid, actions_valid).mean()
                 valid_loss = valid_neg_likelihood
