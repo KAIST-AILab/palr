@@ -5,11 +5,12 @@
 
 ### 1. Prerequisites
 
-- To run this code, first install the anaconda virtual environment:
+- To run this code, first install the anaconda virtual environment and install D4RL:
 
 ```
-conda env create -f environment.yaml
+conda env create -f environment.yml
 conda activate palr
+pip install d4rl
 ```
 
 - (optional) Download D4RL dataset:
