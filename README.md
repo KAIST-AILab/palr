@@ -1,6 +1,6 @@
 # Implementation Code for PALR (Past Action Leakage Regularization) 
 
-- This code contains implementation codes of PALR, which is used to induce experimental results in the paper (under review); please do not distribute.
+- This code contains implementation codes of PALR, which is used to produce experimental results in the original paper ([link](https://openreview.net/pdf?id=XpmJNP8BVA)).
 - The code contains PALR and its baseline 4 methods (BC, FCA, MINE, RAP).
 
 ### 1. Prerequisites
