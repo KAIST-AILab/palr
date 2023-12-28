@@ -40,3 +40,5 @@ python train.py --pid=0
     - FCA : https://github.com/AlvinWen428/fighting-copycat-agents.git
     - MINE implementation : https://github.com/mohith-sakthivel/mine-pytorch.git
     - HSCIC implementation : https://github.com/namratadeka/circe.git
+
+Thank you!
