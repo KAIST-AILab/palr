@@ -41,4 +41,5 @@ python train.py --pid=0
     - MINE implementation : https://github.com/mohith-sakthivel/mine-pytorch.git
     - HSCIC implementation : https://github.com/namratadeka/circe.git
 
-Thank you!
+
+
