@@ -1,7 +1,7 @@
 # Implementation Code for PALR (Past Action Leakage Regularization) 
 
 - This code contains official implementation codes of PALR, which is used to produce experimental results in the original paper presented in NeurIPS 2023 ([pdf](https://openreview.net/pdf?id=XpmJNP8BVA)).
-- The code contains PALR and its baseline 4 methods (BC, FCA, MINE, RAP).
+- This code contains PALR and its baseline 4 methods (BC, FCA, MINE, RAP).
 
 ### 1. Prerequisites
 
